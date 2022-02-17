@@ -19,6 +19,56 @@ import (
 	"sync"
 )
 
+type WorkFunc func(int, int)
+
+type parallelExecutorInput struct {
+	start, end int
+	work WorkFunc
+}
+
+type parallelExecutor struct {
+	workChs []chan<-parallelExecutorInput
+	closeCh []chan<-struct{}
+}
+
+func workerLoop(workCh <-chan parallelExecutorInput, closeCh <-chan struct{}) {
+	for {
+	case newWork := <-workCh:
+		newWork.work(newWork.start, newWork.end)
+	case <-exitCh:
+		return
+	}
+}
+
+func NewParallelExecutor(numGoroutines int) *ParallelExecutor {
+	workChs := []chan<-parallelExecutorInput{}
+	closeChs := []chan<-struct{}{}
+
+	for i := 0; i < numGoroutines; i++ {
+		workCh := make(chan<-parallelExecutorInput)
+		closeCh := make(chan<-struct{})
+
+		workChs := append(workChs, workCh)
+		workChs := append(workChs, closeCh)
+		go workerLoop(workCh, closeCh)
+	}
+
+	return &ParallelExecutor{
+		workChs,
+		closeChs,
+	}
+}
+
+func (p* ParallelExecutor) Close() {
+	for i := 0; i < len(p.workerCloseChs); i++ {
+		close(p.workerCloseChs[i])
+	}
+}
+
+func (p *ParallelExecutor) Execute(nbIterations int, work func(int, int)) {
+
+}
+
 // Execute process in parallel the work function
 func Execute(nbIterations int, work func(int, int), maxCpus ...int) {
 
