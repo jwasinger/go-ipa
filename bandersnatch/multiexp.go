@@ -93,7 +93,7 @@ func partitionScalars(scalars []fr.Element, c uint64, scalarsMont bool, nbTasks 
 	// if it does, though, this will deadlocK.
 	chSmallValues := make(chan int, nbTasks)
 
-	parallel.Execute(len(scalars), func(start, end int) {
+	workCount := parallel.Execute(len(scalars), func(start, end int) {
 		smallValues := 0
 		for i := start; i < end; i++ {
 			var carry int
@@ -161,11 +161,26 @@ func partitionScalars(scalars []fr.Element, c uint64, scalarsMont bool, nbTasks 
 	}, nbTasks)
 
 	// aggregate small values
-	close(chSmallValues)
-	smallValues := 0
-	for o := range chSmallValues {
-		smallValues += o
+	received := 0
+	done := false
+	for received != workCount {
+		select {
+		case val := <-chSmallValues:
+			smallValues += o
+			received++
+			if received == workCount {
+				done = true
+				break
+			}
+		// TODO handle closeCh here
+		}
+
+		if done {
+			break
+		}
+
 	}
+	close(chSmallValues)
 	return toReturn, smallValues
 }
 

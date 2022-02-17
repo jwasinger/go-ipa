@@ -92,7 +92,7 @@ func (p *PrecomputeLagrange) Commit(evaluations []fr.Element) *PointAffine {
 
 	nbTasks := runtime.NumCPU()
 	chPartialResults := make(chan PointProj, nbTasks)
-	parallel.Execute(len(evaluations), func(start, end int) {
+	resultsExpected := parallel.Execute(len(evaluations), func(start, end int) {
 		var partial_result PointProj
 		partial_result.Identity()
 
@@ -120,12 +120,28 @@ func (p *PrecomputeLagrange) Commit(evaluations []fr.Element) *PointAffine {
 
 	// Aggregate Parallel Results
 
-	close(chPartialResults)
 	var result PointProj
 	result.Identity()
-	for partial := range chPartialResults {
-		result.Add(&result, &partial)
+	received := 0
+	done := false
+	for received != workCount {
+		select {
+		case val := <-chPartialResults:
+			result.Add(&result, &partial)
+			received++
+			if received == workCount {
+				done = true
+				break
+			}
+		// TODO handle closeCh here
+		}
+
+		if done {
+			break
+		}
+
 	}
+	close(chPartialResults)
 
 	var res_affine PointAffine
 	res_affine.FromProj(&result)

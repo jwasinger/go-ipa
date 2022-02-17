@@ -19,6 +19,8 @@ import (
 	"sync"
 )
 
+var executor *ParallelExecutor
+
 type WorkFunc func(int, int)
 
 type parallelExecutorInput struct {
@@ -65,17 +67,8 @@ func (p* ParallelExecutor) Close() {
 	}
 }
 
-func (p *ParallelExecutor) Execute(nbIterations int, work func(int, int)) {
-
-}
-
-// Execute process in parallel the work function
-func Execute(nbIterations int, work func(int, int), maxCpus ...int) {
-
-	nbTasks := runtime.NumCPU()
-	if len(maxCpus) == 1 {
-		nbTasks = maxCpus[0]
-	}
+func (p *ParallelExecutor) Execute(nbIterations int, work func(int, int)) int {
+	nbTasks := len(p.workChs)
 	nbIterationsPerCpus := nbIterations / nbTasks
 
 	// more CPUs than tasks: a CPU will work on exactly one iteration
@@ -84,13 +77,10 @@ func Execute(nbIterations int, work func(int, int), maxCpus ...int) {
 		nbTasks = nbIterations
 	}
 
-	var wg sync.WaitGroup
-
 	extraTasks := nbIterations - (nbTasks * nbIterationsPerCpus)
 	extraTasksOffset := 0
 
 	for i := 0; i < nbTasks; i++ {
-		wg.Add(1)
 		_start := i*nbIterationsPerCpus + extraTasksOffset
 		_end := _start + nbIterationsPerCpus
 		if extraTasks > 0 {
@@ -98,11 +88,20 @@ func Execute(nbIterations int, work func(int, int), maxCpus ...int) {
 			extraTasks--
 			extraTasksOffset++
 		}
-		go func() {
-			work(_start, _end)
-			wg.Done()
-		}()
+		p.workChs[i] <- parallelExecutorInput{_start, _end, work}
 	}
+	return nbTasks
+}
 
-	wg.Wait()
+func Init(numGoroutines int) {
+	executor = NewParallelExecutor(numGoroutines)
+}
+
+func Close() {
+	executor.Close()
+	executor = nil
+}
+
+func Execute(nbIterations int, work func(int, int)) int {
+	return executor.Execute(nbIterations, work)
 }
