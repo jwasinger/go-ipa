@@ -24,6 +24,7 @@ import (
 	"github.com/crate-crypto/go-ipa/bandersnatch/parallel"
 	"math"
 	"runtime"
+	"fmt"
 )
 
 // MultiExpConfig enables to set optional configuration attribute to a call to MultiExp
@@ -92,9 +93,9 @@ func partitionScalars(scalars []fr.Element, c uint64, scalarsMont bool, nbTasks 
 	// /!\ nbTasks is enough as parallel.Execute is not going to spawn more than nbTasks go routine
 	// if it does, though, this will deadlocK.
 	chSmallValues := make(chan int)
-	smallValues := 0
 
-	receivedExpected := parallel.Execute(len(scalars), func(start, end int) {
+	resultsExpected := parallel.Execute(nbTasks, func(start, end int) {
+		smallValues := 0
 		for i := start; i < end; i++ {
 			var carry int
 
@@ -156,19 +157,20 @@ func partitionScalars(scalars []fr.Element, c uint64, scalarsMont bool, nbTasks 
 			}
 		}
 
+		fmt.Printf("sending %d\n", smallValues)
 		chSmallValues <- smallValues
-
 	})
 
 	// aggregate small values
 	received := 0
 	done := false
-	for received != receivedExpected {
+	smallValues := 0
+	for received != resultsExpected {
 		select {
 		case val := <-chSmallValues:
 			smallValues += val
 			received++
-			if received == receivedExpected {
+			if received == resultsExpected {
 				done = true
 				break
 			}

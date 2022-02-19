@@ -14,6 +14,11 @@
 
 package parallel
 
+import (
+	"fmt"
+	"sync"
+)
+
 type WorkFunc func(int, int)
 
 type parallelExecuterInput struct {
@@ -24,6 +29,7 @@ type parallelExecuterInput struct {
 type ParallelExecuter struct {
 	workChs []chan parallelExecuterInput
 	closeChs []chan struct{}
+	mutex sync.Mutex
 }
 
 var executer *ParallelExecuter
@@ -53,8 +59,8 @@ func NewParallelExecuter(numGoroutines int) *ParallelExecuter {
 	}
 
 	return &ParallelExecuter{
-		workChs,
-		closeChs,
+		workChs: workChs,
+		closeChs: closeChs,
 	}
 }
 
@@ -67,6 +73,8 @@ func (p* ParallelExecuter) Close() {
 func (p *ParallelExecuter) Execute(nbIterations int, work func(int, int)) int {
 	nbTasks := len(p.workChs)
 	nbIterationsPerCpus := nbIterations / nbTasks
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
 	// more CPUs than tasks: a CPU will work on exactly one iteration
 	if nbIterationsPerCpus < 1 {
@@ -77,6 +85,7 @@ func (p *ParallelExecuter) Execute(nbIterations int, work func(int, int)) int {
 	extraTasks := nbIterations - (nbTasks * nbIterationsPerCpus)
 	extraTasksOffset := 0
 
+	fmt.Printf("nbTasks=%d\n", nbTasks)
 	for i := 0; i < nbTasks; i++ {
 		_start := i*nbIterationsPerCpus + extraTasksOffset
 		_end := _start + nbIterationsPerCpus
@@ -85,6 +94,7 @@ func (p *ParallelExecuter) Execute(nbIterations int, work func(int, int)) int {
 			extraTasks--
 			extraTasksOffset++
 		}
+		fmt.Printf("start/end- %d/%d\n", _start, _end)
 		p.workChs[i] <- parallelExecuterInput{_start, _end, work}
 	}
 	return nbTasks
@@ -92,6 +102,10 @@ func (p *ParallelExecuter) Execute(nbIterations int, work func(int, int)) int {
 
 func Init(numGoroutines int) {
 	executer = NewParallelExecuter(numGoroutines)
+}
+
+func NumGoroutines() int {
+	return len(executer.workChs)
 }
 
 func Close() {

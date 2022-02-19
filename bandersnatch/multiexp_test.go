@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/crate-crypto/go-ipa/bandersnatch/fr"
+	"github.com/crate-crypto/go-ipa/bandersnatch/parallel"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/prop"
 )
@@ -47,6 +48,8 @@ func GenFr() gopter.Gen {
 }
 
 func TestMultiExpPointAffine(t *testing.T) {
+
+	parallel.Init(4)
 
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 2
@@ -103,7 +106,11 @@ func TestMultiExpPointAffine(t *testing.T) {
 
 			splitted1.MultiExp(samplePointsLarge[:], sampleScalars[:], MultiExpConfig{NbTasks: 128})
 			splitted2.MultiExp(samplePointsLarge[:], sampleScalars[:], MultiExpConfig{NbTasks: 51})
-			return r16.Equal(&splitted1) && r16.Equal(&splitted2)
+			if !(r16.Equal(&splitted1) && r16.Equal(&splitted2)) {
+				panic("shit")
+			}
+
+			return true
 		},
 		genScalar,
 	))
@@ -476,6 +483,8 @@ func TestMultiExpPointAffine(t *testing.T) {
 						Mul(&sampleScalars[i-1], &mixer).
 						FromMont()
 				}
+				fmt.Printf("sampleScalars - %v\n", sampleScalars)
+
 
 				scalars, _ := partitionScalars(sampleScalars[:], 15, false, runtime.NumCPU())
 				result.msmC15(samplePoints[:], scalars, false)
