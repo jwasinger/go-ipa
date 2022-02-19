@@ -3,7 +3,6 @@ package bandersnatch
 import (
 	"bytes"
 	"encoding/binary"
-	"runtime"
 
 	"github.com/crate-crypto/go-ipa/bandersnatch/fr"
 	"github.com/crate-crypto/go-ipa/bandersnatch/parallel"
@@ -89,10 +88,8 @@ func DeserializePrecomputedLagrange(serialized []byte) (*PrecomputeLagrange, err
 }
 
 func (p *PrecomputeLagrange) Commit(evaluations []fr.Element) *PointAffine {
-
-	nbTasks := runtime.NumCPU()
-	chPartialResults := make(chan PointProj, nbTasks)
-	resultsExpected := parallel.Execute(len(evaluations), func(start, end int) {
+	chPartialResults := make(chan PointProj)
+	receivedExpected := parallel.Execute(len(evaluations), func(start, end int) {
 		var partial_result PointProj
 		partial_result.Identity()
 
@@ -115,8 +112,7 @@ func (p *PrecomputeLagrange) Commit(evaluations []fr.Element) *PointAffine {
 		}
 
 		chPartialResults <- partial_result
-
-	}, nbTasks)
+	})
 
 	// Aggregate Parallel Results
 
@@ -124,12 +120,12 @@ func (p *PrecomputeLagrange) Commit(evaluations []fr.Element) *PointAffine {
 	result.Identity()
 	received := 0
 	done := false
-	for received != workCount {
+	for received != receivedExpected {
 		select {
-		case val := <-chPartialResults:
+		case partial := <-chPartialResults:
 			result.Add(&result, &partial)
 			received++
-			if received == workCount {
+			if received == receivedExpected {
 				done = true
 				break
 			}

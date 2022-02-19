@@ -91,10 +91,10 @@ func partitionScalars(scalars []fr.Element, c uint64, scalarsMont bool, nbTasks 
 	// processing in the msm in 2, to ensure all go routines finish at ~same time
 	// /!\ nbTasks is enough as parallel.Execute is not going to spawn more than nbTasks go routine
 	// if it does, though, this will deadlocK.
-	chSmallValues := make(chan int, nbTasks)
+	chSmallValues := make(chan int)
+	smallValues := 0
 
-	workCount := parallel.Execute(len(scalars), func(start, end int) {
-		smallValues := 0
+	receivedExpected := parallel.Execute(len(scalars), func(start, end int) {
 		for i := start; i < end; i++ {
 			var carry int
 
@@ -158,17 +158,17 @@ func partitionScalars(scalars []fr.Element, c uint64, scalarsMont bool, nbTasks 
 
 		chSmallValues <- smallValues
 
-	}, nbTasks)
+	})
 
 	// aggregate small values
 	received := 0
 	done := false
-	for received != workCount {
+	for received != receivedExpected {
 		select {
 		case val := <-chSmallValues:
-			smallValues += o
+			smallValues += val
 			received++
-			if received == workCount {
+			if received == receivedExpected {
 				done = true
 				break
 			}

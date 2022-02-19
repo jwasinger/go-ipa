@@ -14,60 +14,57 @@
 
 package parallel
 
-import (
-	"runtime"
-	"sync"
-)
-
-var executor *ParallelExecutor
-
 type WorkFunc func(int, int)
 
-type parallelExecutorInput struct {
+type parallelExecuterInput struct {
 	start, end int
 	work WorkFunc
 }
 
-type parallelExecutor struct {
-	workChs []chan<-parallelExecutorInput
-	closeCh []chan<-struct{}
+type ParallelExecuter struct {
+	workChs []chan parallelExecuterInput
+	closeChs []chan struct{}
 }
 
-func workerLoop(workCh <-chan parallelExecutorInput, closeCh <-chan struct{}) {
+var executer *ParallelExecuter
+
+func workerLoop(workCh <-chan parallelExecuterInput, exitCh <-chan struct{}) {
 	for {
-	case newWork := <-workCh:
-		newWork.work(newWork.start, newWork.end)
-	case <-exitCh:
-		return
+		select {
+		case newWork := <-workCh:
+			newWork.work(newWork.start, newWork.end)
+		case <-exitCh:
+			return
+		}
 	}
 }
 
-func NewParallelExecutor(numGoroutines int) *ParallelExecutor {
-	workChs := []chan<-parallelExecutorInput{}
-	closeChs := []chan<-struct{}{}
+func NewParallelExecuter(numGoroutines int) *ParallelExecuter {
+	workChs := []chan parallelExecuterInput{}
+	closeChs := []chan struct{}{}
 
 	for i := 0; i < numGoroutines; i++ {
-		workCh := make(chan<-parallelExecutorInput)
-		closeCh := make(chan<-struct{})
+		workCh := make(chan parallelExecuterInput)
+		closeCh := make(chan struct{})
 
-		workChs := append(workChs, workCh)
-		workChs := append(workChs, closeCh)
+		workChs = append(workChs, workCh)
+		closeChs = append(closeChs, closeCh)
 		go workerLoop(workCh, closeCh)
 	}
 
-	return &ParallelExecutor{
+	return &ParallelExecuter{
 		workChs,
 		closeChs,
 	}
 }
 
-func (p* ParallelExecutor) Close() {
-	for i := 0; i < len(p.workerCloseChs); i++ {
-		close(p.workerCloseChs[i])
+func (p* ParallelExecuter) Close() {
+	for i := 0; i < len(p.closeChs); i++ {
+		close(p.closeChs[i])
 	}
 }
 
-func (p *ParallelExecutor) Execute(nbIterations int, work func(int, int)) int {
+func (p *ParallelExecuter) Execute(nbIterations int, work func(int, int)) int {
 	nbTasks := len(p.workChs)
 	nbIterationsPerCpus := nbIterations / nbTasks
 
@@ -88,20 +85,20 @@ func (p *ParallelExecutor) Execute(nbIterations int, work func(int, int)) int {
 			extraTasks--
 			extraTasksOffset++
 		}
-		p.workChs[i] <- parallelExecutorInput{_start, _end, work}
+		p.workChs[i] <- parallelExecuterInput{_start, _end, work}
 	}
 	return nbTasks
 }
 
 func Init(numGoroutines int) {
-	executor = NewParallelExecutor(numGoroutines)
+	executer = NewParallelExecuter(numGoroutines)
 }
 
 func Close() {
-	executor.Close()
-	executor = nil
+	executer.Close()
+	executer = nil
 }
 
 func Execute(nbIterations int, work func(int, int)) int {
-	return executor.Execute(nbIterations, work)
+	return executer.Execute(nbIterations, work)
 }
